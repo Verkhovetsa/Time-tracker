@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Трекер времени</title>
+    <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+    <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { margin: 0; padding: 0; font-family: system-ui, -apple-system, sans-serif; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        const PlayIcon = () => (
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <polygon points="5 3 19 12 5 21 5 3"></polygon>
+            </svg>
+        );
+
+        const PauseIcon = () => (
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <rect x="6" y="4" width="4" height="16"></rect>
+                <rect x="14" y="4" width="4" height="16"></rect>
+            </svg>
+        );
+
+        const SquareIcon = () => (
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+            </svg>
+        );
+
+        const PlusIcon = () => (
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <line x1="12" y1="5" x2="12" y2="19"></line>
+                <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+        );
+
+        const TrashIcon = () => (
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <polyline points="3 6 5 6 21 6"></polyline>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+            </svg>
+        );
+
+        const ClockIcon = () => (
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                <circle cx="12" cy="12" r="10"></circle>
+                <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+        );
+
+        function TimeTracker() {
+            const [tasks, setTasks] = useState([]);
+            const [newTaskName, setNewTaskName] = useState('');
+            const [showAddForm, setShowAddForm] = useState(false);
+
+            useEffect(() => {
+                const saved = localStorage.getItem('timeTrackerTasks');
+                if (saved) {
+                    try {
+                        const parsed = JSON.parse(saved);
+                        setTasks(parsed.map(task => ({ ...task, isRunning: false, currentSeconds: 0 })));
+                    } catch (e) {
+                        console.error('Ошибка загрузки данных:', e);
+                    }
+                }
+            }, []);
+
+            useEffect(() => {
+                if (tasks.length > 0) {
+                    const tasksToSave = tasks.map(task => ({
+                        id: task.id,
+                        name: task.name,
+                        totalSeconds: task.totalSeconds + (task.isRunning ? task.currentSeconds : 0),
+                        sessions: task.sessions
+                    }));
+                    localStorage.setItem('timeTrackerTasks', JSON.stringify(tasksToSave));
+                }
+            }, [tasks]);
+
+            useEffect(() => {
+                const interval = setInterval(() => {
+                    setTasks(prevTasks =>
+                        prevTasks.map(task =>
+                            task.isRunning
+                                ? { ...task, currentSeconds: task.currentSeconds + 1 }
+                                : task
+                        )
+                    );
+                }, 1000);
+
+                return () => clearInterval(interval);
+            }, []);
+
+            const addTask = () => {
+                if (!newTaskName.trim()) return;
+
+                const newTask = {
+                    id: Date.now(),
+                    name: newTaskName.trim(),
+                    totalSeconds: 0,
+                    currentSeconds: 0,
+                    isRunning: false,
+                    sessions: []
+                };
+
+                setTasks([...tasks, newTask]);
+                setNewTaskName('');
+                setShowAddForm(false);
+            };
+
+            const toggleTask = (id) => {
+                setTasks(tasks.map(task => {
+                    if (task.id === id) {
+                        if (task.isRunning) {
+                            const sessionTime = task.currentSeconds;
+                            return {
+                                ...task,
+                                isRunning: false,
+                                totalSeconds: task.totalSeconds + sessionTime,
+                                currentSeconds: 0,
+                                sessions: [...task.sessions, sessionTime]
+                            };
+                        } else {
+                            return { ...task, isRunning: true };
+                        }
+                    } else {
+                        if (task.isRunning) {
+                            const sessionTime = task.currentSeconds;
+                            return {
+                                ...task,
+                                isRunning: false,
+                                totalSeconds: task.totalSeconds + sessionTime,
+                                currentSeconds: 0,
+                                sessions: [...task.sessions, sessionTime]
+                            };
+                        }
+                        return task;
+                    }
+                }));
+            };
+
+            const stopTask = (id) => {
+                setTasks(tasks.map(task =>
+                    task.id === id
+                        ? {
+                            ...task,
+                            isRunning: false,
+                            totalSeconds: task.totalSeconds + task.currentSeconds,
+                            currentSeconds: 0,
+                            sessions: task.currentSeconds > 0 
+                                ? [...task.sessions, task.currentSeconds]
+                                : task.sessions
+                        }
+                        : task
+                ));
+            };
+
+            const deleteTask = (id) => {
+                if (confirm('Удалить эту задачу?')) {
+                    setTasks(tasks.filter(task => task.id !== id));
+                }
+            };
+
+            const formatTimeCompact = (totalSeconds) => {
+                const h = Math.floor(totalSeconds / 3600);
+                const m = Math.floor((totalSeconds % 3600) / 60);
+                const s = totalSeconds % 60;
+                return `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+            };
+
+            return (
+                <div className="min-h-screen bg-gradient-to-b from-indigo-500 to-purple-600 pb-6">
+                    <div className="bg-white bg-opacity-10 backdrop-blur-lg p-4 sticky top-0 z-10 shadow-lg">
+                        <div className="flex items-center justify-between max-w-md mx-auto">
+                            <div className="flex items-center gap-2">
+                                <ClockIcon />
+                                <h1 className="text-2xl font-bold text-white">Трекер времени</h1>
+                            </div>
+                            <button
+                                onClick={() => setShowAddForm(!showAddForm)}
+                                className="bg-white text-indigo-600 p-2 rounded-full shadow-lg hover:bg-gray-100 transition-colors"
+                            >
+                                <PlusIcon />
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="max-w-md mx-auto px-4 pt-4">
+                        {showAddForm && (
+                            <div className="bg-white rounded-2xl shadow-xl p-4 mb-4">
+                                <input
+                                    type="text"
+                                    placeholder="Название задачи"
+                                    value={newTaskName}
+                                    onChange={(e) => setNewTaskName(e.target.value)}
+                                    onKeyPress={(e) => e.key === 'Enter' && addTask()}
+                                    className="w-full px-4 py-3 border-2 border-gray-200 rounded-xl focus:outline-none focus:border-indigo-500 mb-3 text-lg"
+                                    autoFocus
+                                />
+                                <div className="flex gap-2">
+                                    <button
+                                        onClick={addTask}
+                                        className="flex-1 bg-indigo-600 text-white py-3 rounded-xl font-semibold hover:bg-indigo-700 transition-colors"
+                                    >
+                                        Добавить
+                                    </button>
+                                    <button
+                                        onClick={() => {
+                                            setShowAddForm(false);
+                                            setNewTaskName('');
+                                        }}
+                                        className="flex-1 bg-gray-300 text-gray-700 py-3 rounded-xl font-semibold hover:bg-gray-400 transition-colors"
+                                    >
+                                        Отмена
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+
+                        {tasks.length === 0 ? (
+                            <div className="text-center py-16 text-white">
+                                <div className="flex justify-center mb-4">
+                                    <ClockIcon />
+                                </div>
+                                <p className="text-xl mb-2">Нет задач</p>
+                                <p className="text-sm opacity-80">Нажмите + чтобы добавить первую задачу</p>
+                            </div>
+                        ) : (
+                            <div className="space-y-3">
+                                {tasks.map(task => (
+                                    <div
+                                        key={task.id}
+                                        className={`rounded-2xl shadow-lg p-4 transition-all ${
+                                            task.isRunning
+                                                ? 'bg-gradient-to-br from-green-400 to-green-500'
+                                                : 'bg-white'
+                                        }`}
+                                    >
+                                        <div className="flex items-start justify-between mb-3">
+                                            <h3 className={`text-lg font-bold flex-1 ${
+                                                task.isRunning ? 'text-white' : 'text-gray-800'
+                                            }`}>
+                                                {task.name}
+                                            </h3>
+                                            {!task.isRunning && (
+                                                <button
+                                                    onClick={() => deleteTask(task.id)}
+                                                    className="text-red-500 hover:text-red-700 p-1"
+                                                >
+                                                    <TrashIcon />
+                                                </button>
+                                            )}
+                                        </div>
+
+                                        <div className={`text-center mb-3 ${
+                                            task.isRunning ? 'text-white' : 'text-gray-800'
+                                        }`}>
+                                            <div className="text-4xl font-bold font-mono mb-1">
+                                                {formatTimeCompact(task.currentSeconds + task.totalSeconds)}
+                                            </div>
+                                            {task.sessions.length > 0 && (
+                                                <div className={`text-sm ${
+                                                    task.isRunning ? 'text-white text-opacity-90' : 'text-gray-600'
+                                                }`}>
+                                                    Сессий: {task.sessions.length}
+                                                </div>
+                                            )}
+                                        </div>
+
+                                        <div className="flex gap-2">
+                                            <button
+                                                onClick={() => toggleTask(task.id)}
+                                                className={`flex-1 py-3 rounded-xl font-semibold flex items-center justify-center gap-2 transition-colors ${
+                                                    task.isRunning
+                                                        ? 'bg-white bg-opacity-30 hover:bg-opacity-40 text-white'
+                                                        : 'bg-indigo-600 hover:bg-indigo-700 text-white'
+                                                }`}
+                                            >
+                                                {task.isRunning ? (
+                                                    <>
+                                                        <PauseIcon />
+                                                        Пауза
+                                                    </>
+                                                ) : (
+                                                    <>
+                                                        <PlayIcon />
+                                                        Старт
+                                                    </>
+                                                )}
+                                            </button>
+
+                                            {task.isRunning && (
+                                                <button
+                                                    onClick={() => stopTask(task.id)}
+                                                    className="bg-white bg-opacity-30 hover:bg-opacity-40 text-white px-4 py-3 rounded-xl font-semibold flex items-center justify-center transition-colors"
+                                                >
+                                                    <SquareIcon />
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        }
+
+        ReactDOM.render(<TimeTracker />, document.getElementById('root'));
+    </script>
+</body>
+</html>
