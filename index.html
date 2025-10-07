@@ -75,7 +75,6 @@
             const [editingTaskId, setEditingTaskId] = useState(null);
             const [editingTaskName, setEditingTaskName] = useState('');
 
-            // Обновляем текущее время каждую секунду
             useEffect(() => {
                 const interval = setInterval(() => {
                     setCurrentTime(Date.now());
@@ -83,7 +82,6 @@
                 return () => clearInterval(interval);
             }, []);
 
-            // Загрузка данных при старте
             useEffect(() => {
                 const saved = localStorage.getItem('timeTrackerTasks');
                 if (saved) {
@@ -96,7 +94,6 @@
                 }
             }, []);
 
-            // Сохранение данных при изменении
             useEffect(() => {
                 if (tasks.length > 0) {
                     localStorage.setItem('timeTrackerTasks', JSON.stringify(tasks));
@@ -131,11 +128,9 @@
             const toggleTask = (id) => {
                 const clickedTask = tasks.find(task => task.id === id);
                 
-                // Если пытаемся запустить новый таймер
                 if (!clickedTask.startTime) {
                     const runningTasks = tasks.filter(task => task.startTime !== null);
                     
-                    // Если есть уже запущенные таймеры - показываем предупреждение
                     if (runningTasks.length > 0) {
                         setWarningData({
                             taskId: id,
@@ -146,11 +141,9 @@
                     }
                 }
                 
-                // Обычное переключение таймера
                 setTasks(tasks.map(task => {
                     if (task.id === id) {
                         if (task.startTime) {
-                            // Останавливаем таймер
                             const sessionTime = calculateCurrentSeconds(task);
                             return {
                                 ...task,
@@ -159,7 +152,6 @@
                                 sessions: [...task.sessions, sessionTime]
                             };
                         } else {
-                            // Запускаем таймер
                             return { ...task, startTime: Date.now() };
                         }
                     }
@@ -315,18 +307,57 @@
                                             }`}
                                         >
                                             <div className="flex items-start justify-between mb-3">
-                                                <h3 className={`text-lg font-bold flex-1 ${
-                                                    isRunning ? 'text-white' : 'text-gray-800'
-                                                }`}>
-                                                    {task.name}
-                                                </h3>
-                                                {!isRunning && (
-                                                    <button
-                                                        onClick={() => deleteTask(task.id)}
-                                                        className="text-red-500 hover:text-red-700 p-1"
-                                                    >
-                                                        <TrashIcon />
-                                                    </button>
+                                                {editingTaskId === task.id ? (
+                                                    <div className="flex-1 flex gap-2">
+                                                        <input
+                                                            type="text"
+                                                            value={editingTaskName}
+                                                            onChange={(e) => setEditingTaskName(e.target.value)}
+                                                            onKeyPress={(e) => {
+                                                                if (e.key === 'Enter') {
+                                                                    saveTaskName(task.id);
+                                                                }
+                                                            }}
+                                                            className="flex-1 px-3 py-2 border-2 border-gray-300 rounded-lg focus:outline-none focus:border-indigo-500"
+                                                            autoFocus
+                                                        />
+                                                        <button
+                                                            onClick={() => saveTaskName(task.id)}
+                                                            className="bg-green-500 text-white px-3 py-2 rounded-lg hover:bg-green-600 transition-colors"
+                                                        >
+                                                            ✓
+                                                        </button>
+                                                        <button
+                                                            onClick={cancelEditing}
+                                                            className="bg-gray-400 text-white px-3 py-2 rounded-lg hover:bg-gray-500 transition-colors"
+                                                        >
+                                                            ✕
+                                                        </button>
+                                                    </div>
+                                                ) : (
+                                                    <>
+                                                        <h3 className={`text-lg font-bold flex-1 ${
+                                                            isRunning ? 'text-white' : 'text-gray-800'
+                                                        }`}>
+                                                            {task.name}
+                                                        </h3>
+                                                        {!isRunning && (
+                                                            <div className="flex gap-2">
+                                                                <button
+                                                                    onClick={() => startEditingTask(task.id, task.name)}
+                                                                    className="text-blue-500 hover:text-blue-700 p-1 transition-colors"
+                                                                >
+                                                                    <EditIcon />
+                                                                </button>
+                                                                <button
+                                                                    onClick={() => deleteTask(task.id)}
+                                                                    className="text-red-500 hover:text-red-700 p-1 transition-colors"
+                                                                >
+                                                                    <TrashIcon />
+                                                                </button>
+                                                            </div>
+                                                        )}
+                                                    </>
                                                 )}
                                             </div>
 
