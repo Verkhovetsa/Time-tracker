@@ -62,44 +62,35 @@
             const [tasks, setTasks] = useState([]);
             const [newTaskName, setNewTaskName] = useState('');
             const [showAddForm, setShowAddForm] = useState(false);
+            const [currentTime, setCurrentTime] = useState(Date.now());
 
+            // Обновляем текущее время каждую секунду
+            useEffect(() => {
+                const interval = setInterval(() => {
+                    setCurrentTime(Date.now());
+                }, 1000);
+                return () => clearInterval(interval);
+            }, []);
+
+            // Загрузка данных при старте
             useEffect(() => {
                 const saved = localStorage.getItem('timeTrackerTasks');
                 if (saved) {
                     try {
                         const parsed = JSON.parse(saved);
-                        setTasks(parsed.map(task => ({ ...task, isRunning: false, currentSeconds: 0 })));
+                        setTasks(parsed);
                     } catch (e) {
                         console.error('Ошибка загрузки данных:', e);
                     }
                 }
             }, []);
 
+            // Сохранение данных при изменении
             useEffect(() => {
                 if (tasks.length > 0) {
-                    const tasksToSave = tasks.map(task => ({
-                        id: task.id,
-                        name: task.name,
-                        totalSeconds: task.totalSeconds + (task.isRunning ? task.currentSeconds : 0),
-                        sessions: task.sessions
-                    }));
-                    localStorage.setItem('timeTrackerTasks', JSON.stringify(tasksToSave));
+                    localStorage.setItem('timeTrackerTasks', JSON.stringify(tasks));
                 }
             }, [tasks]);
-
-            useEffect(() => {
-                const interval = setInterval(() => {
-                    setTasks(prevTasks =>
-                        prevTasks.map(task =>
-                            task.isRunning
-                                ? { ...task, currentSeconds: task.currentSeconds + 1 }
-                                : task
-                        )
-                    );
-                }, 1000);
-
-                return () => clearInterval(interval);
-            }, []);
 
             const addTask = () => {
                 if (!newTaskName.trim()) return;
@@ -108,8 +99,7 @@
                     id: Date.now(),
                     name: newTaskName.trim(),
                     totalSeconds: 0,
-                    currentSeconds: 0,
-                    isRunning: false,
+                    startTime: null,
                     sessions: []
                 };
 
@@ -118,29 +108,39 @@
                 setShowAddForm(false);
             };
 
+            const calculateCurrentSeconds = (task) => {
+                if (!task.startTime) return 0;
+                return Math.floor((currentTime - task.startTime) / 1000);
+            };
+
+            const getTotalTime = (task) => {
+                return task.totalSeconds + calculateCurrentSeconds(task);
+            };
+
             const toggleTask = (id) => {
                 setTasks(tasks.map(task => {
                     if (task.id === id) {
-                        if (task.isRunning) {
-                            const sessionTime = task.currentSeconds;
+                        if (task.startTime) {
+                            // Останавливаем таймер
+                            const sessionTime = calculateCurrentSeconds(task);
                             return {
                                 ...task,
-                                isRunning: false,
+                                startTime: null,
                                 totalSeconds: task.totalSeconds + sessionTime,
-                                currentSeconds: 0,
                                 sessions: [...task.sessions, sessionTime]
                             };
                         } else {
-                            return { ...task, isRunning: true };
+                            // Запускаем таймер
+                            return { ...task, startTime: Date.now() };
                         }
                     } else {
-                        if (task.isRunning) {
-                            const sessionTime = task.currentSeconds;
+                        // Останавливаем другие таймеры
+                        if (task.startTime) {
+                            const sessionTime = calculateCurrentSeconds(task);
                             return {
                                 ...task,
-                                isRunning: false,
+                                startTime: null,
                                 totalSeconds: task.totalSeconds + sessionTime,
-                                currentSeconds: 0,
                                 sessions: [...task.sessions, sessionTime]
                             };
                         }
@@ -151,15 +151,12 @@
 
             const stopTask = (id) => {
                 setTasks(tasks.map(task =>
-                    task.id === id
+                    task.id === id && task.startTime
                         ? {
                             ...task,
-                            isRunning: false,
-                            totalSeconds: task.totalSeconds + task.currentSeconds,
-                            currentSeconds: 0,
-                            sessions: task.currentSeconds > 0 
-                                ? [...task.sessions, task.currentSeconds]
-                                : task.sessions
+                            startTime: null,
+                            totalSeconds: task.totalSeconds + calculateCurrentSeconds(task),
+                            sessions: [...task.sessions, calculateCurrentSeconds(task)]
                         }
                         : task
                 ));
@@ -237,79 +234,84 @@
                             </div>
                         ) : (
                             <div className="space-y-3">
-                                {tasks.map(task => (
-                                    <div
-                                        key={task.id}
-                                        className={`rounded-2xl shadow-lg p-4 transition-all ${
-                                            task.isRunning
-                                                ? 'bg-gradient-to-br from-green-400 to-green-500'
-                                                : 'bg-white'
-                                        }`}
-                                    >
-                                        <div className="flex items-start justify-between mb-3">
-                                            <h3 className={`text-lg font-bold flex-1 ${
-                                                task.isRunning ? 'text-white' : 'text-gray-800'
-                                            }`}>
-                                                {task.name}
-                                            </h3>
-                                            {!task.isRunning && (
-                                                <button
-                                                    onClick={() => deleteTask(task.id)}
-                                                    className="text-red-500 hover:text-red-700 p-1"
-                                                >
-                                                    <TrashIcon />
-                                                </button>
-                                            )}
-                                        </div>
-
-                                        <div className={`text-center mb-3 ${
-                                            task.isRunning ? 'text-white' : 'text-gray-800'
-                                        }`}>
-                                            <div className="text-4xl font-bold font-mono mb-1">
-                                                {formatTimeCompact(task.currentSeconds + task.totalSeconds)}
-                                            </div>
-                                            {task.sessions.length > 0 && (
-                                                <div className={`text-sm ${
-                                                    task.isRunning ? 'text-white text-opacity-90' : 'text-gray-600'
+                                {tasks.map(task => {
+                                    const isRunning = task.startTime !== null;
+                                    const totalTime = getTotalTime(task);
+                                    
+                                    return (
+                                        <div
+                                            key={task.id}
+                                            className={`rounded-2xl shadow-lg p-4 transition-all ${
+                                                isRunning
+                                                    ? 'bg-gradient-to-br from-green-400 to-green-500'
+                                                    : 'bg-white'
+                                            }`}
+                                        >
+                                            <div className="flex items-start justify-between mb-3">
+                                                <h3 className={`text-lg font-bold flex-1 ${
+                                                    isRunning ? 'text-white' : 'text-gray-800'
                                                 }`}>
-                                                    Сессий: {task.sessions.length}
-                                                </div>
-                                            )}
-                                        </div>
-
-                                        <div className="flex gap-2">
-                                            <button
-                                                onClick={() => toggleTask(task.id)}
-                                                className={`flex-1 py-3 rounded-xl font-semibold flex items-center justify-center gap-2 transition-colors ${
-                                                    task.isRunning
-                                                        ? 'bg-white bg-opacity-30 hover:bg-opacity-40 text-white'
-                                                        : 'bg-indigo-600 hover:bg-indigo-700 text-white'
-                                                }`}
-                                            >
-                                                {task.isRunning ? (
-                                                    <>
-                                                        <PauseIcon />
-                                                        Пауза
-                                                    </>
-                                                ) : (
-                                                    <>
-                                                        <PlayIcon />
-                                                        Старт
-                                                    </>
+                                                    {task.name}
+                                                </h3>
+                                                {!isRunning && (
+                                                    <button
+                                                        onClick={() => deleteTask(task.id)}
+                                                        className="text-red-500 hover:text-red-700 p-1"
+                                                    >
+                                                        <TrashIcon />
+                                                    </button>
                                                 )}
-                                            </button>
+                                            </div>
 
-                                            {task.isRunning && (
+                                            <div className={`text-center mb-3 ${
+                                                isRunning ? 'text-white' : 'text-gray-800'
+                                            }`}>
+                                                <div className="text-4xl font-bold font-mono mb-1">
+                                                    {formatTimeCompact(totalTime)}
+                                                </div>
+                                                {task.sessions.length > 0 && (
+                                                    <div className={`text-sm ${
+                                                        isRunning ? 'text-white text-opacity-90' : 'text-gray-600'
+                                                    }`}>
+                                                        Сессий: {task.sessions.length}
+                                                    </div>
+                                                )}
+                                            </div>
+
+                                            <div className="flex gap-2">
                                                 <button
-                                                    onClick={() => stopTask(task.id)}
-                                                    className="bg-white bg-opacity-30 hover:bg-opacity-40 text-white px-4 py-3 rounded-xl font-semibold flex items-center justify-center transition-colors"
+                                                    onClick={() => toggleTask(task.id)}
+                                                    className={`flex-1 py-3 rounded-xl font-semibold flex items-center justify-center gap-2 transition-colors ${
+                                                        isRunning
+                                                            ? 'bg-white bg-opacity-30 hover:bg-opacity-40 text-white'
+                                                            : 'bg-indigo-600 hover:bg-indigo-700 text-white'
+                                                    }`}
                                                 >
-                                                    <SquareIcon />
+                                                    {isRunning ? (
+                                                        <>
+                                                            <PauseIcon />
+                                                            Пауза
+                                                        </>
+                                                    ) : (
+                                                        <>
+                                                            <PlayIcon />
+                                                            Старт
+                                                        </>
+                                                    )}
                                                 </button>
-                                            )}
+
+                                                {isRunning && (
+                                                    <button
+                                                        onClick={() => stopTask(task.id)}
+                                                        className="bg-white bg-opacity-30 hover:bg-opacity-40 text-white px-4 py-3 rounded-xl font-semibold flex items-center justify-center transition-colors"
+                                                    >
+                                                        <SquareIcon />
+                                                    </button>
+                                                )}
+                                            </div>
                                         </div>
-                                    </div>
-                                ))}
+                                    );
+                                })}
                             </div>
                         )}
                     </div>
